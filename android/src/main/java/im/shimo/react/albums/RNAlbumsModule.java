@@ -2,6 +2,7 @@ package im.shimo.react.albums;
 
 import android.database.Cursor;
 import android.provider.MediaStore;
+import android.util.Log;
 
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Promise;
@@ -112,6 +113,12 @@ public class RNAlbumsModule extends ReactContextBaseJavaModule {
 
     @ReactMethod
     public void getAlbumList(ReadableMap options, Promise promise) {
+
+
+        if( options.hasKey("filter") && "video".equalsIgnoreCase(options.getString("filter")) ) {
+            getVideoAlbumList( options, promise );
+            return;
+        }
         // which image properties are we querying
         String[] PROJECTION_BUCKET = {
                 MediaStore.Images.ImageColumns.BUCKET_ID,
@@ -168,6 +175,70 @@ public class RNAlbumsModule extends ReactContextBaseJavaModule {
 
         promise.resolve(list);
     }
+
+    @ReactMethod
+    public void getVideoAlbumList(ReadableMap options, Promise promise) {
+        // which image properties are we querying
+        String[] PROJECTION_BUCKET = {
+                MediaStore.Video.VideoColumns.BUCKET_ID,
+                MediaStore.Video.VideoColumns.BUCKET_DISPLAY_NAME,
+                MediaStore.Video.VideoColumns.DATE_TAKEN,
+                MediaStore.Video.VideoColumns.DATA,
+                "count(" +  MediaStore.Video.VideoColumns.BUCKET_ID + ") as count"
+        };
+
+        String BUCKET_GROUP_BY = "1) GROUP BY 1,(2";
+        String BUCKET_ORDER_BY = "MAX(" + MediaStore.Video.VideoColumns.DATE_TAKEN + ") DESC";
+
+
+        Cursor cursor = getReactApplicationContext().getContentResolver().query(
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                PROJECTION_BUCKET,
+                BUCKET_GROUP_BY,
+                null,
+                BUCKET_ORDER_BY
+        );
+
+        Log.i("Album Cursor", "" +cursor);
+
+        WritableArray list = Arguments.createArray();
+        if (cursor != null && cursor.moveToFirst()) {
+            String bucket;
+            String date;
+            String data;
+            String count;
+            int bucketColumn = cursor.getColumnIndex(
+                    MediaStore.Video.Media.BUCKET_DISPLAY_NAME);
+            int dateColumn = cursor.getColumnIndex(
+                    MediaStore.Video.Media.DATE_TAKEN);
+            int dataColumn = cursor.getColumnIndex(
+                    MediaStore.Video.Media.DATA);
+            int countColumn = cursor.getColumnIndex("count");
+            do {
+                // Get the field values
+                bucket = cursor.getString(bucketColumn);
+                date = cursor.getString(dateColumn);
+                data = cursor.getString(dataColumn);
+                count = cursor.getString(countColumn);
+
+
+                WritableMap image = Arguments.createMap();
+                setWritableMap(image, "count", count);
+                setWritableMap(image, "date", date);
+                setWritableMap(image, "cover", "file://" + data);
+                setWritableMap(image, "name", bucket);
+
+                list.pushMap(image);
+            } while (cursor.moveToNext());
+
+            cursor.close();
+        }
+
+        promise.resolve(list);
+    }
+
+
+
 
     private boolean shouldSetField(ReadableMap options, String name) {
         return options.hasKey(name) && options.getBoolean(name);
